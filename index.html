@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Token Speed Race</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .token-word {
+            display: inline-block;
+            margin-right: 4px;
+            animation: fadeIn 0.2s ease-out forwards;
+        }
+        .panel-active {
+            border-color: #3b82f6;
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans">
+
+    <div class="container mx-auto px-4 py-12 max-w-6xl">
+        <header class="text-center mb-12">
+            <h1 class="text-4xl font-bold mb-4 text-blue-400">Token Speed Visualizer</h1>
+            <p class="text-slate-400">Compare how different LLM speeds feel in real-time (Client-side simulation).</p>
+        </header>
+
+        <!-- Configuration Bar -->
+        <div class="bg-slate-800 p-6 rounded-2xl mb-8 flex flex-wrap items-end justify-center gap-6 border border-slate-700">
+            <div class="flex flex-col">
+                <label class="text-sm font-medium text-slate-300 mb-1">Panel 1 (Slow)</label>
+                <input type="number" id="speed-1" value="2" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 w-24 text-center focus:ring-2 focus:ring-blue-500 outline-none transition-all">
+                <span class="text-[10px] text-slate-500 text-center mt-1">tokens/sec</span>
+            </div>
+            <div class="flex flex-col">
+                <label class="text-sm font-medium text-slate-300 mb-1">Panel 2 (Mid)</label>
+                <input type="number" id="speed-2" value="30" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 w-24 text-center focus:ring-2 focus:ring-blue-500 outline-none transition-all">
+                <span class="text-[10px] text-slate-500 text-center mt-1">tokens/sec</span>
+            </div>
+            <div class="flex flex-col">
+                <label class="text-sm font-medium text-slate-300 mb-1">Panel 3 (Fast)</label>
+                <input type="number" id="speed-3" value="100" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 w-24 text-center focus:ring-2 focus:ring-blue-500 outline-none transition-all">
+                <span class="text-[10px] text-slate-500 text-center mt-1">tokens/sec</span>
+            </div>
+            <div class="flex gap-3">
+                <button id="btn-start" onclick="startRace()" class="bg-blue-600 hover:bg-blue-500 text-white px-8 py-2 rounded font-bold transition-all transform active:scale-95">Start Race</button>
+                <button onclick="resetRace()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 px-6 py-2 rounded transition-all transform active:scale-95">Reset</button>
+            </div>
+        </div>
+
+        <!-- Comparison Grid -->
+        <div class="grid grid-cols-3 gap-4 md:gap-6">
+            <!-- Panel 1 -->
+            <div id="p1-container" class="bg-slate-800 p-6 rounded-2xl border-2 border-slate-700 transition-all min-h-[350px] flex flex-col">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-lg text-slate-300">Speed 1</h3>
+                    <span id="counter-1" class="bg-slate-700 px-2 py-1 rounded text-xs text-blue-400 font-mono">0 tokens</span>
+                </div>
+                <div id="p1-content" class="text-slate-200 leading-relaxed text-xl break-words flex-grow">
+                    <span class="text-slate-500 italic">Ready...</span>
+                </div>
+            </div>
+
+            <!-- Panel 2 -->
+            <div id="p2-container" class="bg-slate-800 p-6 rounded-2xl border-2 border-slate-700 transition-all min-h-[350px] flex flex-col">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-lg text-slate-300">Speed 2</h3>
+                    <span id="counter-2" class="bg-slate-700 px-2 py-1 rounded text-xs text-blue-400 font-mono">0 tokens</span>
+                </div>
+                <div id="p2-content" class="text-slate-200 leading-relaxed text-xl break-words flex-grow">
+                    <span class="text-slate-500 italic">Ready...</span>
+                </div>
+            </div>
+
+            <!-- Panel 3 -->
+            <div id="p3-container" class="bg-slate-800 p-6 rounded-2xl border-2 border-slate-700 transition-all min-h-[350px] flex flex-col">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-lg text-slate-300">Speed 3</h3>
+                    <span id="counter-3" class="bg-slate-700 px-2 py-1 rounded text-xs text-blue-400 font-mono">0 tokens</span>
+                </div>
+                <div id="p3-content" class="text-slate-200 leading-relaxed text-xl break-words flex-grow">
+                    <span class="text-slate-500 italic">Ready...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let activeSimulations = [];
+        let tokenCounts = [0, 0, 0];
+        let isRunning = false;
+
+        function loadText() {
+            return `Text generated by Gemma4 31B :
+Large Language Model (LLM) inference is the process of using a trained model to generate a sequence of tokens based on a given prompt. One of the most critical metrics for the end-user experience is the Tokens Per Second (TPS), which represents the rate at which the model produces output. TPS directly influences the "reading speed" of the model, where low TPS can feel sluggish and slow, while high TPS creates an almost instantaneous feel, often faster than a human can read.
+
+The performance of an LLM depends on several hardware and architectural factors. The primary bottleneck is typically memory bandwidth rather than raw compute. Since the entire model (or the active parts of it) must be read from memory for every token generated, the speed is often limited by how fast the GPU can pull weights from VRAM.
+
+When we discuss model architectures, we often differentiate between "Dense" models and "Mixture of Experts" (MoE). In a dense model, every single parameter in the model is activated for every single token. For example, if you have a 70B parameter dense model, 70 billion parameters must be processed for every single word generated. This requires massive memory bandwidth and computation.
+
+In contrast, a Mixture of Experts (MoE) architecture, like Mixtral or GPT-4, divides the model's parameters into separate "expert" networks. Instead of activating the entire model, a routing layer decides which "experts" are most relevant for the current token. If a model has 100 billion total parameters but only uses 10 billion per token, it can achieve the intelligence of a much larger model while maintaining the speed (and compute cost) of a smaller one. This allows MoE models to deliver significantly higher Tokens Per Second than a dense model of an equivalent total size.
+
+Local inference, the act of running these models on one's own hardware rather than a cloud API, introduces challenges in memory management. VRAM is the most precious resource. If a model exceeds the available VRAM, the system may fall back to system RAM (using tools like llama.cpp), which is significantly slower, crashing the TPS. Quantization is used to combat this, compressing 16-bit weights into 4-bit or 8-bit integers to fit larger models into smaller GPUs without significant loss in quality.
+
+To calculate TPS, we simply take the total number of generated tokens and divide by the time elapsed. For example, generating 50 tokens in 2 seconds equals 25 TPS. While a fast GPU like an H100 can reach hundreds of tokens per second, consumer hardware varies wildly based on the quantization level and the size of the model. Understanding this trade-off between model size, quantization, and hardware is the key to optimizing local AI deployments.
+
+The architecture of transformers, the foundation of these models, relies on the attention mechanism. Attention allows the model to weight the importance of different tokens in a sequence, creating context. In local inference, the "KV Cache" (Key-Value Cache) is used to store previously computed attention states, avoiding redundant calculations. However, the KV Cache grows with sequence length, consuming VRAM and potentially slowing down inference as the context window fills up.
+
+Comparing Dense and MoE again: MoE allows for "sparse" activation. In a dense model, the compute cost scales linearly with the parameter count. In an MoE model, the compute cost scales with the size of the active experts, not the total size. This architectural leap is why we see the emergence of very large yet efficient models. For the user, this translates to the ability to run highly capable models on more modest hardware if the active expert count is kept low.
+
+Ultimately, whether using a dense model for consistency or MoE for efficiency, the goal is always the same: maximizing Tokens Per Second while maintaining coherence and intelligence. Whether it is for a coding assistant that needs to be lightning-fast or a creative writing tool that can be slower, the TPS remains the golden metric for measuring the fluidity of human-AI interaction.`;
+        }
+
+        async function startRace() {
+            if (isRunning) return;
+            isRunning = true;
+            resetRace();
+
+            const text = await loadText();
+            const tokens = text.split(/\s+/).filter(t => t.length > 0);
+            
+            const speeds = [
+                parseFloat(document.getElementById('speed-1').value),
+                parseFloat(document.getElementById('speed-2').value),
+                parseFloat(document.getElementById('speed-3').value)
+            ];
+
+            for (let i = 1; i <= 3; i++) {
+                simulateStreaming(i, tokens, speeds[i-1]);
+            }
+        }
+
+        async function simulateStreaming(panelIndex, tokens, speed) {
+            const container = document.getElementById(`p${panelIndex}-container`);
+            const content = document.getElementById(`p${panelIndex}-content`);
+            const counter = document.getElementById(`counter-${panelIndex}`);
+            
+            container.classList.add('panel-active');
+            content.innerHTML = '';
+            
+            const interval = 1000 / speed;
+            
+            const simulation = {
+                active: true,
+                stop: () => { simulation.active = false; }
+            };
+            activeSimulations.push(simulation);
+
+            for (let i = 0; i < tokens.length; i++) {
+                if (!simulation.active) break;
+                
+                const span = document.createElement('span');
+                span.className = 'token-word text-white';
+                span.innerText = tokens[i] + ' ';
+                content.appendChild(span);
+                
+                tokenCounts[panelIndex-1]++;
+                counter.innerText = `${tokenCounts[panelIndex-1]} tokens`;
+                
+                await new Promise(resolve => setTimeout(resolve, interval));
+            }
+            
+            container.classList.remove('panel-active');
+        }
+
+        function resetRace() {
+            activeSimulations.forEach(sim => sim.stop());
+            activeSimulations = [];
+            tokenCounts = [0, 0, 0];
+            isRunning = false;
+
+            for (let i = 1; i <= 3; i++) {
+                document.getElementById(`p${i}-container`).classList.remove('panel-active');
+                document.getElementById(`p${i}-content`).innerHTML = '<span class="text-slate-500 italic">Ready...</span>';
+                document.getElementById(`counter-${i}`).innerText = '0 tokens';
+            }
+        }
+    </script>
+</body>
+</html>
